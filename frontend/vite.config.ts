@@ -11,4 +11,7 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  server: {
+    allowedHosts: ['hot-clowns-own.loca.lt', '.loca.lt'],
+  },
 })

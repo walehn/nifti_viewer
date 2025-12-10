@@ -1,22 +1,29 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { NiiVueViewer } from '@/components/viewer/NiiVueViewer'
 import { ViewerToolbar } from '@/components/viewer/ViewerToolbar'
+import { OverlayControls } from '@/components/viewer/OverlayControls'
+import { useViewerStore } from '@/stores/viewerStore'
 import { ArrowLeft, Upload, FolderOpen } from 'lucide-react'
 
 export function LocalViewerPage() {
   const navigate = useNavigate()
   const [file, setFile] = useState<File | null>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [segmentationFile, setSegmentationFile] = useState<File | null>(null)
+  const segmentationInputRef = useRef<HTMLInputElement>(null)
+  const { clearOverlay } = useViewerStore()
 
   const handleFileSelect = useCallback((selectedFile: File) => {
     if (selectedFile.name.endsWith('.nii') || selectedFile.name.endsWith('.nii.gz')) {
       setFile(selectedFile)
+      setSegmentationFile(null)
+      clearOverlay()
     } else {
       alert('Please select a NIfTI file (.nii or .nii.gz)')
     }
-  }, [])
+  }, [clearOverlay])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -44,6 +51,33 @@ export function LocalViewerPage() {
       handleFileSelect(selectedFile)
     }
   }, [handleFileSelect])
+
+  // Segmentation file handlers
+  const handleSegmentationSelect = useCallback((selectedFile: File) => {
+    if (selectedFile.name.endsWith('.nii') || selectedFile.name.endsWith('.nii.gz')) {
+      setSegmentationFile(selectedFile)
+    } else {
+      alert('Please select a NIfTI file (.nii or .nii.gz)')
+    }
+  }, [])
+
+  const handleSegmentationInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0]
+    if (selectedFile) {
+      handleSegmentationSelect(selectedFile)
+    }
+    // Reset input so same file can be selected again
+    e.target.value = ''
+  }, [handleSegmentationSelect])
+
+  const triggerSegmentationInput = useCallback(() => {
+    segmentationInputRef.current?.click()
+  }, [])
+
+  const handleClearSegmentation = useCallback(() => {
+    setSegmentationFile(null)
+    clearOverlay()
+  }, [clearOverlay])
 
   if (!file) {
     return (
@@ -114,11 +148,26 @@ export function LocalViewerPage() {
             </p>
           </div>
         </div>
-        <ViewerToolbar />
+        <div className="flex items-center gap-4">
+          <ViewerToolbar />
+          <OverlayControls
+            onLoadSegmentation={triggerSegmentationInput}
+            onClearSegmentation={handleClearSegmentation}
+          />
+        </div>
       </header>
 
+      {/* Hidden segmentation file input */}
+      <input
+        ref={segmentationInputRef}
+        type="file"
+        accept=".nii,.nii.gz"
+        onChange={handleSegmentationInputChange}
+        className="hidden"
+      />
+
       <main className="flex-1 relative">
-        <NiiVueViewer file={file} />
+        <NiiVueViewer file={file} segmentationFile={segmentationFile ?? undefined} />
       </main>
     </div>
   )

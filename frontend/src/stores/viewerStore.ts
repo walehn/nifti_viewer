@@ -40,6 +40,12 @@ interface ViewerState {
   // Volume info
   volumeInfo: VolumeInfo | null
 
+  // Overlay (Segmentation)
+  hasOverlay: boolean
+  overlayVisible: boolean
+  overlayOpacity: number
+  overlayFileName: string | null
+
   // Actions
   setSliceType: (type: number) => void
   setCurrentSlice: (slice: number) => void
@@ -48,6 +54,12 @@ interface ViewerState {
   applyPreset: (preset: WindowPreset) => void
   setVolumeInfo: (info: VolumeInfo) => void
   reset: () => void
+
+  // Overlay actions
+  setOverlayLoaded: (fileName: string) => void
+  setOverlayVisible: (visible: boolean) => void
+  setOverlayOpacity: (opacity: number) => void
+  clearOverlay: () => void
 }
 
 const initialState = {
@@ -58,6 +70,11 @@ const initialState = {
   windowWidth: 420,
   currentPreset: 'abdomen' as WindowPreset,
   volumeInfo: null,
+  // Overlay
+  hasOverlay: false,
+  overlayVisible: true,
+  overlayOpacity: 0.5,
+  overlayFileName: null as string | null,
 }
 
 export const useViewerStore = create<ViewerState>((set) => ({
@@ -87,4 +104,22 @@ export const useViewerStore = create<ViewerState>((set) => ({
   setVolumeInfo: (info) => set({ volumeInfo: info }),
 
   reset: () => set(initialState),
+
+  // Overlay actions
+  setOverlayLoaded: (fileName) => set({
+    hasOverlay: true,
+    overlayFileName: fileName,
+    overlayVisible: true,
+  }),
+
+  setOverlayVisible: (visible) => set({ overlayVisible: visible }),
+
+  setOverlayOpacity: (opacity) => set({ overlayOpacity: opacity }),
+
+  clearOverlay: () => set({
+    hasOverlay: false,
+    overlayVisible: true,
+    overlayOpacity: 0.5,
+    overlayFileName: null,
+  }),
 }))

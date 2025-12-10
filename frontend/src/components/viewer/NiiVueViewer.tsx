@@ -5,9 +5,10 @@ import { useViewerStore } from '@/stores/viewerStore'
 interface NiiVueViewerProps {
   file?: File
   url?: string
+  segmentationFile?: File
 }
 
-export function NiiVueViewer({ file, url }: NiiVueViewerProps) {
+export function NiiVueViewer({ file, url, segmentationFile }: NiiVueViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const nvRef = useRef<Niivue | null>(null)
   const {
@@ -16,7 +17,12 @@ export function NiiVueViewer({ file, url }: NiiVueViewerProps) {
     windowWidth,
     setCurrentSlice,
     setMaxSlice,
-    setVolumeInfo
+    setVolumeInfo,
+    // Overlay
+    overlayVisible,
+    overlayOpacity,
+    setOverlayLoaded,
+    clearOverlay,
   } = useViewerStore()
 
   // Store current window values in ref to apply after slice type change
@@ -197,6 +203,110 @@ export function NiiVueViewer({ file, url }: NiiVueViewerProps) {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
+
+  // Load segmentation overlay - split each label into separate volumes
+  useEffect(() => {
+    const nv = nvRef.current
+    if (!nv || !segmentationFile || nv.volumes.length === 0) return
+
+    const loadSegmentation = async () => {
+      try {
+        // Remove existing overlays
+        while (nv.volumes.length > 1) {
+          nv.removeVolumeByIndex(nv.volumes.length - 1)
+        }
+
+        const arrayBuffer = await segmentationFile.arrayBuffer()
+        // Load temporarily to extract label data
+        await nv.loadFromArrayBuffer(arrayBuffer, segmentationFile.name)
+
+        if (nv.volumes.length > 1) {
+          const segVolume = nv.volumes[1]
+          const img = segVolume.img
+
+          // Find unique labels
+          const labelSet = new Set<number>()
+          if (img) {
+            for (let i = 0; i < img.length; i++) {
+              if (img[i] > 0) labelSet.add(img[i])
+            }
+          }
+
+          const labels = Array.from(labelSet).sort((a, b) => a - b)
+          console.log('Labels found:', labels)
+
+          // Colors for each label
+          const labelColors = ['red', 'green', 'blue', 'yellow', 'cyan', 'magenta']
+
+          // Remove the combined segmentation
+          nv.removeVolumeByIndex(1)
+
+          // Create separate volume for each label (in reverse order so smaller labels are on top)
+          for (let i = labels.length - 1; i >= 0; i--) {
+            const label = labels[i]
+            const color = labelColors[i % labelColors.length]
+
+            // Create a binary mask for this label
+            const maskData = new Float32Array(img!.length)
+            for (let j = 0; j < img!.length; j++) {
+              maskData[j] = img![j] === label ? 1 : 0
+            }
+
+            // Load the original file again for this label
+            await nv.loadFromArrayBuffer(arrayBuffer.slice(0), `label_${label}.nii`)
+
+            const labelVolume = nv.volumes[nv.volumes.length - 1]
+
+            // Replace image data with binary mask
+            if (labelVolume.img) {
+              for (let j = 0; j < labelVolume.img.length; j++) {
+                labelVolume.img[j] = img![j] === label ? 1 : 0
+              }
+            }
+
+            // Configure this label's appearance
+            labelVolume.cal_min = 0.5
+            labelVolume.cal_max = 1.5
+            labelVolume.colormap = color
+
+            console.log(`Label ${label} loaded with color: ${color}`)
+          }
+
+          // Set opacity for all overlays
+          for (let i = 1; i < nv.volumes.length; i++) {
+            nv.setOpacity(i, overlayOpacity)
+          }
+
+          nv.updateGLVolume()
+          setOverlayLoaded(segmentationFile.name)
+        }
+      } catch (error) {
+        console.error('Failed to load segmentation:', error)
+      }
+    }
+
+    loadSegmentation()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [segmentationFile, setOverlayLoaded])
+
+  // Sync overlay visibility and opacity for all overlay volumes
+  useEffect(() => {
+    const nv = nvRef.current
+    if (!nv || nv.volumes.length < 2) return
+
+    const effectiveOpacity = overlayVisible ? overlayOpacity : 0
+    // Apply to all overlay volumes (index 1 and above)
+    for (let i = 1; i < nv.volumes.length; i++) {
+      nv.setOpacity(i, effectiveOpacity)
+    }
+    nv.updateGLVolume()
+  }, [overlayVisible, overlayOpacity])
+
+  // Clear overlay state when main file changes
+  useEffect(() => {
+    clearOverlay()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file, url])
 
   return (
     <canvas
